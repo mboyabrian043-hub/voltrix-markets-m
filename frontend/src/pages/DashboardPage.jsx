@@ -1,4 +1,9 @@
 import { useDeriv } from "../hooks/useDeriv";
+import { useEffect } from "react";
+import { OpenContracts } from "../components/trading/OpenContracts";
+import { TradeHistory } from "../components/trading/TradeHistory";
+import { TradePanel } from "../components/trading/TradePanel";
+import { useTradingEngineStore } from "../store/tradingEngineStore";
 
 const statusTone = {
   connected: "text-green-400",
@@ -23,13 +28,43 @@ export const DashboardPage = () => {
     isAuthorized,
     accountBalance,
     accountCurrency,
-    groupedSymbols,
-    tickBySymbol,
     lastError,
     reconnect,
   } = useDeriv();
 
   const isStreaming = connectionStatus === "connected" && isAuthorized;
+  const {
+    initialize,
+    groupedSymbols,
+    tickBySymbol,
+    selectedCategory,
+    selectedSymbol,
+    contractType,
+    stake,
+    duration,
+    durationUnit,
+    barrier,
+    proposal,
+    openContracts,
+    tradeHistory,
+    isRequestingProposal,
+    isBuying,
+    tradingError,
+    contractOptions,
+    setSelectedCategory,
+    setSelectedSymbol,
+    setContractType,
+    setStake,
+    setDuration,
+    setDurationUnit,
+    setBarrier,
+    requestProposal,
+    buyContract,
+  } = useTradingEngineStore();
+
+  useEffect(() => {
+    initialize();
+  }, [initialize]);
 
   return (
     <section className="space-y-6">
@@ -84,6 +119,41 @@ export const DashboardPage = () => {
           {lastError}
         </div>
       ) : null}
+
+      <div className="grid gap-4 lg:grid-cols-3">
+        <div className="lg:col-span-1">
+          <TradePanel
+            groupedSymbols={groupedSymbols}
+            tickBySymbol={tickBySymbol}
+            selectedCategory={selectedCategory}
+            selectedSymbol={selectedSymbol}
+            contractType={contractType}
+            contractOptions={contractOptions}
+            stake={stake}
+            duration={duration}
+            durationUnit={durationUnit}
+            barrier={barrier}
+            proposal={proposal}
+            isRequestingProposal={isRequestingProposal}
+            isBuying={isBuying}
+            tradingError={tradingError}
+            onSelectCategory={setSelectedCategory}
+            onSelectSymbol={setSelectedSymbol}
+            onSetContractType={setContractType}
+            onSetStake={setStake}
+            onSetDuration={setDuration}
+            onSetDurationUnit={setDurationUnit}
+            onSetBarrier={setBarrier}
+            onRequestProposal={requestProposal}
+            onBuy={buyContract}
+          />
+        </div>
+
+        <div className="space-y-4 lg:col-span-2">
+          <OpenContracts openContracts={openContracts} />
+          <TradeHistory tradeHistory={tradeHistory} />
+        </div>
+      </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
         {marketSections.map((section) => (

@@ -221,27 +221,7 @@ class DerivWebSocketService {
       };
     }
 
-    const entry = {
-      payload: { ticks: symbol, subscribe: 1 },
-      callbacks: new Set([callback]),
-      subscriptionId: null,
-    };
-    this.subscriptionRegistry.set(key, entry);
-
-    if (this.ws?.readyState === WebSocket.OPEN) {
-      await this.attachSubscription(key, entry);
-    }
-
-    return () => {
-      const target = this.subscriptionRegistry.get(key);
-      if (!target) {
-        return;
-      }
-      target.callbacks.delete(callback);
-      if (target.callbacks.size === 0) {
-        this.subscriptionRegistry.delete(key);
-      }
-    };
+    return this.subscribeStream(key, { ticks: symbol, subscribe: 1 }, callback);
   }
 
   async subscribeBalance(callback) {
@@ -254,8 +234,55 @@ class DerivWebSocketService {
       };
     }
 
+    return this.subscribeStream(key, { balance: 1, subscribe: 1 }, callback);
+  }
+
+  async requestProposal(payload) {
+    const response = await this.send({ proposal: 1, ...payload });
+    if (response.error) {
+      this.handleApiError(response.error);
+      throw new Error(response.error.message || "Failed to get proposal.");
+    }
+    return response.proposal;
+  }
+
+  async buyContract(proposalId, price) {
+    const response = await this.send({ buy: proposalId, price });
+    if (response.error) {
+      this.handleApiError(response.error);
+      throw new Error(response.error.message || "Failed to buy contract.");
+    }
+    return response.buy;
+  }
+
+  async subscribeOpenContract(contractId, callback) {
+    const key = `open_contract:${contractId}`;
+    return this.subscribeStream(
+      key,
+      {
+        proposal_open_contract: 1,
+        contract_id: contractId,
+        subscribe: 1,
+      },
+      callback
+    );
+  }
+
+  async subscribeTransactions(callback) {
+    return this.subscribeStream("transactions", { transaction: 1, subscribe: 1 }, callback);
+  }
+
+  async subscribeStream(key, payload, callback) {
+    const existing = this.subscriptionRegistry.get(key);
+    if (existing) {
+      existing.callbacks.add(callback);
+      return () => {
+        this.removeCallbackFromSubscription(key, callback).catch(() => null);
+      };
+    }
+
     const entry = {
-      payload: { balance: 1, subscribe: 1 },
+      payload,
       callbacks: new Set([callback]),
       subscriptionId: null,
     };
@@ -266,18 +293,35 @@ class DerivWebSocketService {
     }
 
     return () => {
-      const target = this.subscriptionRegistry.get(key);
-      if (!target) {
-        return;
-      }
-      target.callbacks.delete(callback);
-      if (target.callbacks.size === 0) {
-        this.subscriptionRegistry.delete(key);
-      }
+      this.removeCallbackFromSubscription(key, callback).catch(() => null);
     };
   }
 
+  async removeCallbackFromSubscription(key, callback) {
+    const target = this.subscriptionRegistry.get(key);
+    if (!target) {
+      return;
+    }
+    target.callbacks.delete(callback);
+    if (target.callbacks.size > 0) {
+      return;
+    }
+
+    this.subscriptionRegistry.delete(key);
+    if (target.subscriptionId) {
+      this.subscriptionIdToKeys.delete(target.subscriptionId);
+      if (this.ws?.readyState === WebSocket.OPEN) {
+        try {
+          await this.send({ forget: target.subscriptionId });
+        } catch {
+          // Forget failures should not block local cleanup.
+        }
+      }
+    }
+  }
+
   async restoreSubscriptions() {
+    this.subscriptionIdToKeys.clear();
     for (const [key, entry] of this.subscriptionRegistry.entries()) {
       entry.subscriptionId = null;
       await this.attachSubscription(key, entry);
