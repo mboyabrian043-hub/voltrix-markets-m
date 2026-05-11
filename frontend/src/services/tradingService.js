@@ -9,6 +9,8 @@ const contractTypeMap = {
   DIGITDIFF: "DIGITDIFF",
   CALL: "CALL",
   PUT: "PUT",
+  HIGHER: "CALL",
+  LOWER: "PUT",
 };
 
 export const tradingService = {

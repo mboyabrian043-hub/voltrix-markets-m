@@ -46,7 +46,8 @@ export const DashboardPage = () => {
     barrier,
     proposal,
     openContracts,
-    tradeHistory,
+    completedTrades,
+    transactionHistory,
     isRequestingProposal,
     isBuying,
     tradingError,
@@ -151,7 +152,7 @@ export const DashboardPage = () => {
 
         <div className="space-y-4 lg:col-span-2">
           <OpenContracts openContracts={openContracts} />
-          <TradeHistory tradeHistory={tradeHistory} />
+          <TradeHistory completedTrades={completedTrades} transactionHistory={transactionHistory} />
         </div>
       </div>
 

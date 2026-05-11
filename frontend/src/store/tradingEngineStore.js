@@ -11,6 +11,8 @@ const contractOptions = [
   { value: "DIGITDIFF", label: "Digit Differs", requiresBarrier: true, barrierHint: "0-9" },
   { value: "CALL", label: "Rise", requiresBarrier: false },
   { value: "PUT", label: "Fall", requiresBarrier: false },
+  { value: "HIGHER", label: "Higher", requiresBarrier: true, barrierHint: "e.g. +0.10" },
+  { value: "LOWER", label: "Lower", requiresBarrier: true, barrierHint: "e.g. -0.10" },
 ];
 
 export const useTradingEngineStore = create((set, get) => ({
@@ -24,7 +26,8 @@ export const useTradingEngineStore = create((set, get) => ({
   barrier: "",
   proposal: null,
   openContracts: [],
-  tradeHistory: [],
+  completedTrades: [],
+  transactionHistory: [],
   isRequestingProposal: false,
   isBuying: false,
   tradingError: null,
@@ -53,9 +56,9 @@ export const useTradingEngineStore = create((set, get) => ({
       }
 
       set((prev) => ({
-        tradeHistory: [
+        transactionHistory: [
           {
-            id: tx.transaction_id || `${tx.action_type}-${tx.transaction_time}`,
+            id: `tx-${tx.transaction_id || `${tx.action_type}-${tx.transaction_time}`}`,
             actionType: tx.action_type,
             symbol: tx.symbol,
             amount: tx.amount,
@@ -64,7 +67,7 @@ export const useTradingEngineStore = create((set, get) => ({
             transactionTime: tx.transaction_time,
             longcode: tx.longcode,
           },
-          ...prev.tradeHistory,
+          ...prev.transactionHistory,
         ].slice(0, 100),
       }));
     });
@@ -97,6 +100,9 @@ export const useTradingEngineStore = create((set, get) => ({
     try {
       const selectedContract = state.contractOptions.find((item) => item.value === state.contractType);
       const requiresBarrier = selectedContract?.requiresBarrier;
+      if (requiresBarrier && (state.barrier === "" || state.barrier === null || state.barrier === undefined)) {
+        throw new Error("Barrier is required for the selected contract type.");
+      }
       const proposal = await tradingService.getProposal({
         symbol: state.selectedSymbol,
         contractType: state.contractType,
@@ -146,10 +152,14 @@ export const useTradingEngineStore = create((set, get) => ({
 
         set((prev) => {
           const current = prev.openContracts.filter((item) => item.contract_id !== openContract.contract_id);
-          const next = [openContract, ...current];
+          const next = openContract.is_sold ? current : [openContract, ...current];
           const status = openContract.is_sold ? (openContract.profit >= 0 ? "won" : "lost") : "open";
 
-          const updatedHistory = openContract.is_sold
+          const existingCompleted = prev.completedTrades.filter(
+            (item) => item.contractId !== openContract.contract_id
+          );
+
+          const updatedCompletedTrades = openContract.is_sold
             ? [
                 {
                   id: `contract-${openContract.contract_id}-${openContract.date_expiry}`,
@@ -165,13 +175,23 @@ export const useTradingEngineStore = create((set, get) => ({
                   startTime: openContract.date_start,
                   longcode: openContract.longcode,
                 },
-                ...prev.tradeHistory,
+                ...existingCompleted,
               ].slice(0, 100)
-            : prev.tradeHistory;
+            : prev.completedTrades;
+
+          const contractUnsubscribers = { ...prev.contractUnsubscribers };
+          if (openContract.is_sold && contractUnsubscribers[openContract.contract_id]) {
+            const closeStream = contractUnsubscribers[openContract.contract_id];
+            if (typeof closeStream === "function") {
+              closeStream();
+            }
+            delete contractUnsubscribers[openContract.contract_id];
+          }
 
           return {
             openContracts: next.slice(0, 30),
-            tradeHistory: updatedHistory,
+            completedTrades: updatedCompletedTrades,
+            contractUnsubscribers,
           };
         });
       });
